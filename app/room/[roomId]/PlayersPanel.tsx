@@ -2,19 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
+import { useParams } from 'next/navigation'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { getAllPlayers, getSelfId } from '@/game/realtime/PlayerRealtime'
-import { Users2, MessageSquareText, Video } from "lucide-react"
+import { Users2, MessageSquareText, Video, CheckSquare } from "lucide-react"
 import TextChat from './TextChat'
+import TasksPanel from './TasksPanel'
 
 type PlayerInfo = { id: string; name?: string; character?: string; avatar?: string }
 
 export default function PlayersPanel() {
 	const [players, setPlayers] = useState<PlayerInfo[]>([])
-	const [activeTab, setActiveTab] = useState<'participants' | 'chat'>('participants')
+	const [activeTab, setActiveTab] = useState<'participants' | 'chat' | 'tasks'>('participants')
 	const selfId = getSelfId()
 	const { user } = useUser()
+	const params = useParams()
+	const roomId = params.roomId as string
 
 	const refresh = useCallback(() => {
 		const all = getAllPlayers()
@@ -96,7 +101,7 @@ const onCall = useCallback(() => {}, [])
 						</div>
 
 						{/* Tabs */}
-						<div className="mt-0 mb-2 grid grid-cols-2 gap-2">
+						<div className="mt-0 mb-2 grid grid-cols-3 gap-2">
 							<button onClick={() => setActiveTab('participants')} className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition ${activeTab === 'participants' ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
 								<Users2 className="w-4 h-4" />
 								<span className="text-sm font-medium">Participants</span>
@@ -104,6 +109,10 @@ const onCall = useCallback(() => {}, [])
 							<button onClick={() => setActiveTab('chat')} className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition ${activeTab === 'chat' ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
 								<MessageSquareText className="w-4 h-4" />
 								<span className="text-sm font-medium">Chat</span>
+							</button>
+							<button onClick={() => setActiveTab('tasks')} className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition ${activeTab === 'tasks' ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+								<CheckSquare className="w-4 h-4" />
+								<span className="text-sm font-medium">Tasks</span>
 							</button>
 						</div>
 
@@ -141,6 +150,13 @@ const onCall = useCallback(() => {}, [])
 							{/* Chat pane (kept mounted) */}
 							<div className={`${activeTab === 'chat' ? 'flex' : 'hidden'} flex-1 overflow-hidden`}>
 								<TextChat embedded title="Room Chat" variant="solid" className="h-full w-full" />
+							</div>
+
+							{/* Tasks pane (kept mounted) */}
+							<div className={`${activeTab === 'tasks' ? 'flex' : 'hidden'} flex-1 overflow-hidden`}>
+								<ScrollArea className="flex-1">
+									<TasksPanel roomId={roomId} />
+								</ScrollArea>
 							</div>
 						</div>
 					</div>

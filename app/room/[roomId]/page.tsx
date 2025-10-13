@@ -5,6 +5,7 @@ import {LoaderTwo } from '@/components/ui/loader'
 import LeaveRoomButton from './LeaveRoomButton'
 import PlayersPanel from './PlayersPanel'
 import MediaComponent from './MediaComponent';
+import TaskNotification from '@/app/components/TaskNotification';
 
 export default async function RoomPage({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await params
@@ -18,6 +19,9 @@ export default async function RoomPage({ params }: { params: Promise<{ roomId: s
         <MediaComponent />
       </div>
       <PlayersPanel />
+      
+      {/* Task Notifications */}
+      <TaskNotification roomId={roomId} />
       
       {/** Chat is now inside the right panel under the Chat tab **/}
       <Suspense fallback={<div className="w-full h-screen flex items-center justify-center"><LoaderTwo/></div>}>
