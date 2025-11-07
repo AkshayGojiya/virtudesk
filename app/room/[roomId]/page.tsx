@@ -82,10 +82,10 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
         />
     
         </MediaComponent>
-      <div className="absolute bottom-4 right-4 z-50 space-y-2 flex flex-col items-end">
+      {/* <div className="absolute bottom-4 right-4 z-50 space-y-2 flex flex-col items-end">
         <LeaveRoomButton />
        
-      </div>
+      </div> */}
         {inMeeting && <Button style={{position:"absolute",left:"50%",top:"2%",transform:"translate(-50%,-50%)",zIndex:"10000"}}
           onClick={handleOpenWhiteboard}
           className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-md px-4 py-2 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-1 transition"

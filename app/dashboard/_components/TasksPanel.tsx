@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth, useOrganization, useUser } from "@clerk/nextjs";
-import { assignTaskToUsers, createTask, deleteTask, getTasksByUserRole, updateTask, updateTaskAssignmentStatus, type TaskWithAssignments } from "@/app/actions/Tasks";
+import { createTask, deleteTask, getTasksByUserRole, updateTask, updateTaskAssignmentStatus, type TaskWithAssignments } from "@/app/actions/Tasks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -13,7 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { getRooms } from "@/app/actions/Room";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { CheckCircle2, PlayCircle, Trash2, UserPlus2, Clock3, AlertTriangle, CheckCheck, Tag, LayoutList } from "lucide-react";
+import { CheckCircle2, PlayCircle, Trash2, UserPlus2, Clock3, AlertTriangle, Tag, LayoutList } from "lucide-react";
 
 type Priority = 'low' | 'medium' | 'high' | 'urgent';
 type Status = 'pending' | 'in_progress' | 'completed' | 'cancelled';
@@ -27,6 +27,7 @@ export default function TasksPanel() {
   const [tasks, setTasks] = useState<TaskWithAssignments[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [rooms, setRooms] = useState<{ id: string; title: string }[]>([]);
+  const [members, setMembers] = useState<Array<{ id: string; name: string; role: string; }>>([]);
 
   const isAdmin = useMemo(() => orgRole === 'org:admin' || orgRole === 'admin', [orgRole]);
 
@@ -56,6 +57,20 @@ export default function TasksPanel() {
     loadRooms();
   }, [orgId]);
 
+  useEffect(() => {
+    const load = async () => {
+      if (!organization || !organization.getMemberships) return;
+      try {
+        const list = await organization.getMemberships();
+        const arr = (list?.data || [])
+          .filter((m: any) => m.publicUserData?.userId)
+          .map((m: any) => ({ id: m.publicUserData.userId as string, name: (m.publicUserData.identifier as string) || 'Member', role: m.role }));
+        setMembers(arr);
+      } catch {}
+    };
+    void load();
+  }, [organization]);
+
   return (
     <div className="fixed right-4 top-20 bottom-4 z-40 w-[360px] max-w-[80vw] pointer-events-auto">
       <Card className="h-full flex flex-col overflow-hidden">
@@ -66,7 +81,7 @@ export default function TasksPanel() {
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1"><LayoutList size={16}/> New</Button>
               </DialogTrigger>
-              <CreateTaskDialog orgId={orgId || ''} rooms={rooms} onCreated={() => { setCreateOpen(false); fetchTasks(); }} />
+              <CreateTaskDialog orgId={orgId || ''} rooms={rooms} members={members} onCreated={() => { setCreateOpen(false); fetchTasks(); }} />
             </Dialog>
           )}
         </div>
@@ -76,7 +91,7 @@ export default function TasksPanel() {
         <ScrollArea className="flex-1 min-h-0 overflow-x-hidden">
           <div className="p-3 space-y-3 max-w-full">
             {tasks.map((t) => (
-              <TaskItem key={t.id} task={t} canManage={!!isAdmin} onUpdated={fetchTasks} />
+              <TaskItem key={t.id} task={t} canManage={!!isAdmin} onUpdated={fetchTasks} rooms={rooms} members={members} />
             ))}
             {!loading && tasks.length === 0 && (
               <Card className="p-6 text-center text-sm text-muted-foreground">No tasks yet.</Card>
@@ -107,27 +122,31 @@ function statusBadge(status: Status) {
   return map[status];
 }
 
-function TaskItem({ task, canManage, onUpdated }: { task: TaskWithAssignments; canManage: boolean; onUpdated: () => void; }) {
+function TaskItem({ task, canManage, onUpdated, rooms, members }: { task: TaskWithAssignments; canManage: boolean; onUpdated: () => void; rooms: { id: string; title: string }[], members: { id: string; name: string; role: string; }[] }) {
   const { user } = useUser();
-  const isAssignee = useMemo(() => task.assignments.some(a => a.assigned_to === user?.id), [task.assignments, user]);
+  const userAssignment = useMemo(() => task.assignments.find(a => a.assigned_to === user?.id), [task.assignments, user]);
+  const canShowEmployeeActions = useMemo(() => !!userAssignment && !canManage && task.status !== 'completed', [userAssignment, canManage, task.status]);
+
+  const roomName = useMemo(() => {
+    if (!task.room_id) return '';
+    return rooms.find(r => r.id === task.room_id)?.title || task.room_id;
+  }, [task.room_id, rooms]);
+
+  const getMemberName = useCallback((userId: string) => {
+    const member = members.find(m => m.id === userId);
+    return member ? member.name : userId.slice(0, 8) + '…';
+  }, [members]);
 
   const [updating, setUpdating] = useState(false);
-
-  const changeStatus = async (status: Status) => {
-    setUpdating(true);
-    try {
-      await updateTask(task.id, { status });
-      onUpdated();
-    } finally {
-      setUpdating(false);
-    }
-  };
 
   const changeSelfAssignmentStatus = async (status: Exclude<Status, 'cancelled'>) => {
     if (!user) return;
     setUpdating(true);
     try {
       await updateTaskAssignmentStatus(task.id, user.id, status as any);
+      if (status === 'in_progress' && task.status !== 'in_progress') {
+        await updateTask(task.id, { status: 'in_progress' });
+      }
       onUpdated();
     } finally {
       setUpdating(false);
@@ -161,43 +180,34 @@ function TaskItem({ task, canManage, onUpdated }: { task: TaskWithAssignments; c
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {task.assignments.map((a) => (
-              <Badge key={a.id} variant="secondary" className="text-xs"><UserPlus2 className="mr-1" size={12}/> {a.assigned_to.slice(0, 8)}…</Badge>
+              <Badge key={a.id} variant="secondary" className="text-xs"><UserPlus2 className="mr-1" size={12}/> {getMemberName(a.assigned_to)}</Badge>
             ))}
             {task.due_date && <Badge variant="outline" className="text-xs">Due {new Date(task.due_date).toLocaleDateString()}</Badge>}
-            {task.room_id && <Badge variant="outline" className="text-xs">Room {task.room_id}</Badge>}
+            {task.room_id && <Badge variant="outline" className="text-xs">Room {roomName}</Badge>}
           </div>
           <div className="mt-3 flex items-center gap-2 flex-wrap">
-            {isAssignee && task.status !== 'completed' && (
+            {canShowEmployeeActions && (
               <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button size="sm" variant="secondary" disabled={updating} onClick={() => changeSelfAssignmentStatus('in_progress')} className="gap-1"><PlayCircle size={16}/> Start</Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Set your assignment In Progress</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button size="sm" className="bg-green-600 hover:bg-green-700 gap-1" disabled={updating} onClick={() => changeSelfAssignmentStatus('completed')}><CheckCircle2 size={16}/> Done</Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Mark your assignment Completed</TooltipContent>
-                </Tooltip>
+                {userAssignment?.status === 'pending' && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="secondary" disabled={updating} onClick={() => changeSelfAssignmentStatus('in_progress')} className="gap-1"><PlayCircle size={16}/> Start</Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Set your assignment In Progress</TooltipContent>
+                  </Tooltip>
+                )}
+                {userAssignment?.status === 'in_progress' && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700 gap-1" disabled={updating} onClick={() => changeSelfAssignmentStatus('completed')}><CheckCircle2 size={16}/> Completed</Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Mark your assignment Completed</TooltipContent>
+                  </Tooltip>
+                )}
               </TooltipProvider>
             )}
             {canManage && (
               <TooltipProvider>
-                <TaskAssignSmall taskId={task.id} onAssigned={onUpdated} />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button size="sm" variant="outline" disabled={updating} onClick={() => changeStatus('in_progress')} className="gap-1"><Clock3 size={16}/> In progress</Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Set task In Progress</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button size="sm" variant="outline" disabled={updating} onClick={() => changeStatus('completed')} className="gap-1"><CheckCheck size={16}/> Complete</Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Mark task Completed</TooltipContent>
-                </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button size="sm" variant="destructive" disabled={updating} onClick={onDelete} className="gap-1"><Trash2 size={16}/> Delete</Button>
@@ -213,9 +223,8 @@ function TaskItem({ task, canManage, onUpdated }: { task: TaskWithAssignments; c
   );
 }
 
-function CreateTaskDialog({ orgId, rooms, roomId, onCreated }: { orgId: string; rooms?: { id: string; title: string }[]; roomId?: string; onCreated: () => void; }) {
+function CreateTaskDialog({ orgId, rooms, roomId, onCreated, members: allMembers }: { orgId: string; rooms?: { id: string; title: string }[]; roomId?: string; onCreated: () => void; members: Array<{ id: string; name: string; role: string; }> }) {
   const { user } = useUser();
-  const { organization } = useOrganization();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Priority>('medium');
@@ -223,25 +232,11 @@ function CreateTaskDialog({ orgId, rooms, roomId, onCreated }: { orgId: string; 
   const [assignees, setAssignees] = useState<string[]>([]);
   const [room, setRoom] = useState<string | undefined>(roomId);
   const [submitting, setSubmitting] = useState(false);
-  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([]);
-  const [loadingMembers, setLoadingMembers] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      if (!organization || !organization.getMemberships) return;
-      setLoadingMembers(true);
-      try {
-        const list = await organization.getMemberships();
-        const arr = (list?.data || [])
-          .filter((m: any) => m.role !== 'org:admin' && m.publicUserData?.userId)
-          .map((m: any) => ({ id: m.publicUserData.userId as string, name: (m.publicUserData.identifier as string) || 'Member' }));
-        setMembers(arr);
-      } finally {
-        setLoadingMembers(false);
-      }
-    };
-    void load();
-  }, [organization]);
+  const members = useMemo(() => {
+    if (!allMembers) return [];
+    return allMembers.filter(m => m.role !== 'org:admin');
+  }, [allMembers]);
 
   
 
@@ -297,8 +292,7 @@ function CreateTaskDialog({ orgId, rooms, roomId, onCreated }: { orgId: string; 
         <div>
           <div className="text-sm mb-1">Assign to participants</div>
           <div className="flex flex-wrap gap-2">
-            {loadingMembers && <span className="text-xs text-muted-foreground">Loading members…</span>}
-            {!loadingMembers && members.map((m) => (
+            {members.map((m) => (
               <Button key={m.id} type="button" variant={assignees.includes(m.id) ? 'default' : 'outline'} size="sm" onClick={() => setAssignees((prev) => prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id])}>
                 {m.name}
               </Button>
@@ -314,69 +308,3 @@ function CreateTaskDialog({ orgId, rooms, roomId, onCreated }: { orgId: string; 
     </DialogContent>
   );
 }
-
-function TaskAssignSmall({ taskId, onAssigned }: { taskId: string; onAssigned: () => void; }) {
-  const { organization } = useOrganization();
-  const [assigning, setAssigning] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [members, setMembers] = useState<Array<{ id: string; name: string }>>([]);
-  const [loadingMembers, setLoadingMembers] = useState(false);
-
-  useEffect(() => {
-    const load = async () => {
-      if (!organization || !organization.getMemberships) return;
-      setLoadingMembers(true);
-      try {
-        const list = await organization.getMemberships();
-        const arr = (list?.data || [])
-          .filter((m: any) => m.role !== 'org:admin' && m.publicUserData?.userId)
-          .map((m: any) => ({ id: m.publicUserData.userId as string, name: (m.publicUserData.identifier as string) || 'Member' }));
-        setMembers(arr);
-      } finally {
-        setLoadingMembers(false);
-      }
-    };
-    void load();
-  }, [organization]);
-
-  const onAssign = async () => {
-    if (selected.length === 0) return;
-    setAssigning(true);
-    try {
-      await assignTaskToUsers(taskId, selected);
-      onAssigned();
-      setSelected([]);
-    } finally {
-      setAssigning(false);
-    }
-  };
-
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-1"><UserPlus2 size={16}/> Assign</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Assign Task</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {loadingMembers && <span className="text-xs text-muted-foreground">Loading members…</span>}
-            {!loadingMembers && members.map((m) => (
-              <Button key={m.id} type="button" variant={selected.includes(m.id) ? 'default' : 'outline'} size="sm" onClick={() => setSelected((prev) => prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id])}>
-                {m.name}
-              </Button>
-            ))}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline">Close</Button>
-            <Button disabled={assigning || selected.length === 0} onClick={onAssign}>Assign</Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-

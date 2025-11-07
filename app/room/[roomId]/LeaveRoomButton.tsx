@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { destroyRealtime } from '@/game/realtime/PlayerRealtime'
+import { LogOut } from 'lucide-react'
 
 export default function LeaveRoomButton() {
 	const router = useRouter()
@@ -24,16 +25,16 @@ export default function LeaveRoomButton() {
 
 	return (
 		
-		<div className="pointer-events-auto">
-			<Button
-				onClick={handleLeave}
-				disabled={isLeaving}
-				className="bg-red-500 hover:bg-red-600 text-white rounded-md px-4 py-2 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 border-0 transition"
-				size="sm"
-			>
-				Leave Room
-			</Button>
-		</div>
+		<button
+			onClick={handleLeave}
+			disabled={isLeaving}
+			className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition 
+                bg-white border-slate-200 text-slate-600 hover:bg-slate-50
+                disabled:opacity-50 disabled:cursor-not-allowed`}
+		>
+			<LogOut className="w-4 h-4" />
+			<span className="text-sm font-medium">Leave Room</span>
+		</button>
 	)
 }
 

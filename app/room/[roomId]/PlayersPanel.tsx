@@ -8,6 +8,7 @@ import { getAllPlayers, getSelfId } from '@/game/realtime/PlayerRealtime'
 import { Users2, MessageSquareText, Video } from "lucide-react"
 import TextChat from './TextChat'
 import { getWhiteboardOpen } from '@/game/whiteboardState'
+import LeaveRoomButton from './LeaveRoomButton'
 
 type PlayerInfo = { id: string; name?: string; character?: string; avatar?: string }
 
@@ -130,7 +131,7 @@ const onCall = useCallback(() => {}, [])
 						</div>
 
 						{/* Content */}
-						<div className="bg-white border border-slate-200 rounded-md overflow-hidden flex flex-col h-[calc(50vh-72px)] p-2">
+						<div className="bg-white border border-slate-200 rounded-md overflow-hidden flex flex-col h-[calc(50vh-110px)] p-2">
 							{/* Participants pane (kept mounted) */}
 							<div className={`${activeTab === 'participants' ? 'flex' : 'hidden'} flex-col flex-1 overflow-y-auto divide-y divide-slate-200 px-1`}>
 								{players.map((p) => {
@@ -164,6 +165,19 @@ const onCall = useCallback(() => {}, [])
 							<div className={`${activeTab === 'chat' ? 'flex' : 'hidden'} flex-1 overflow-hidden`}>
 								<TextChat embedded title="Room Chat" variant="solid" className="h-full w-full" />
 							</div>
+						</div>
+
+                        {/* leave room and start meeting button*/}
+						<div className="mt-2 mb-2 grid grid-cols-2 gap-2">
+							<button onClick={() => setActiveTab('participants')} className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition ${activeTab === 'participants' ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+								<Video className="w-4 h-4" />
+								<span className="text-sm font-medium">Start Meeting</span>
+							</button>
+							{/* <button onClick={() => setActiveTab('chat')} className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition ${activeTab === 'chat' ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+								<MessageSquareText className="w-4 h-4" />
+								<span className="text-sm font-medium">Leave Room</span>
+							</button> */}
+							<LeaveRoomButton />
 						</div>
 					</div>
 				</div>
